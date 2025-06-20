@@ -70,11 +70,11 @@ class PPO:
     def update_policy(self, advantages, returns):
         b_obs, b_actions, b_log_probs, b_values, b_rewards, b_dones = zip(*self.buffer.buffer)
         b_obs = np.array(b_obs, dtype=np.float32).reshape(-1, 4)
-        b_actions = torch.tensor(b_actions, dtype=torch.int64).reshape(-1)
-        b_log_probs = torch.tensor(b_log_probs, dtype=torch.float32).reshape(-1)
-        b_values = torch.tensor(b_values, dtype=torch.float32).reshape(-1)
-        b_rewards = torch.tensor(b_rewards, dtype=torch.float32).reshape(-1)
-        b_dones = torch.tensor(b_dones, dtype=torch.float32).reshape(-1)
+        b_actions = np.array(b_actions, dtype=np.int64).reshape(-1)
+        b_log_probs = np.array(b_log_probs, dtype=np.float32).reshape(-1)
+        b_values = np.array(b_values, dtype=np.float32).reshape(-1)
+        b_rewards = np.array(b_rewards, dtype=np.float32).reshape(-1)
+        b_dones = np.array(b_dones, dtype=np.float32).reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         
@@ -88,11 +88,11 @@ class PPO:
 
                 # Minibatches
                 mb_obs = torch.tensor(b_obs[mb_inds], dtype=torch.float32)
-                mb_actions = b_actions[mb_inds]
-                mb_log_probs = b_log_probs[mb_inds]
-                mb_advantages = b_advantages[mb_inds]
-                mb_returns = b_returns[mb_inds]
-                
+                mb_actions = torch.tensor(b_actions[mb_inds], dtype=torch.int64)
+                mb_log_probs = torch.tensor(b_log_probs[mb_inds], dtype=torch.float32)
+                mb_advantages = torch.tensor(b_advantages[mb_inds], dtype=torch.float32)
+                mb_returns = torch.tensor(b_returns[mb_inds], dtype=torch.float32)
+
                 # Forward pass
                 new_action_logits, new_values = self.policy(mb_obs)
                 new_values = new_values.squeeze(-1)
@@ -118,8 +118,11 @@ class PPO:
 
     def compute_gae(self, next_obs, next_done):
         _, _, _, values, rewards, dones = zip(*self.buffer.buffer)
+        values = np.array(values, dtype=np.float32)
         values = torch.tensor(values, dtype=torch.float32)
+        rewards = np.array(rewards, dtype=np.float32)
         rewards = torch.tensor(rewards, dtype=torch.float32)
+        dones = np.array(dones, dtype=np.float32)
         dones = torch.tensor(dones, dtype=torch.float32)
         with torch.no_grad():
             next_value = self.policy(next_obs)[1].squeeze(-1)
@@ -146,7 +149,7 @@ class PPO:
         episode_lengths = np.zeros(self.n_envs)
         reward_history = []
         length_history = []
-        num_updates = total_timesteps // (self.buffer.buffer_size * self.n_envs) + 2
+        num_updates = total_timesteps // (self.buffer.buffer_size * self.n_envs)
         for update in range(num_updates):
             for step in range(self.buffer.buffer_size):
                 action, log_prob, value = self.act(obs)
@@ -172,7 +175,6 @@ class PPO:
     def load(self, path):
         self.policy.load_state_dict(torch.load(path))
         self.policy.eval()
-        return self
 
     def predict(self, obs):
         obs_tensor = torch.tensor(obs, dtype=torch.float32)
