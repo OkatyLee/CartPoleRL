@@ -143,13 +143,13 @@ class PPO:
         return advantages, returns
 
     def learn(self, total_timesteps):
-        obs = self.env.reset()
+        obs, info = self.env.reset()
         obs = torch.tensor(obs, dtype=torch.float32)
         episode_rewards = np.zeros(self.n_envs)
         episode_lengths = np.zeros(self.n_envs)
         reward_history = []
         length_history = []
-        num_updates = total_timesteps // (self.buffer.buffer_size * self.n_envs)
+        num_updates = total_timesteps // (self.buffer.buffer_size * self.n_envs) + 1
         for update in range(num_updates):
             for step in range(self.buffer.buffer_size):
                 action, log_prob, value = self.act(obs)
@@ -177,6 +177,8 @@ class PPO:
         self.policy.eval()
 
     def predict(self, obs):
+        if not isinstance(obs, np.ndarray) and not isinstance(obs, torch.Tensor):
+            obs = np.array(obs, dtype=np.float32)
         obs_tensor = torch.tensor(obs, dtype=torch.float32)
         action_logits, value = self.policy(obs_tensor)
         dist = Categorical(logits=action_logits)
