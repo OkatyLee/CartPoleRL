@@ -51,7 +51,6 @@ class VecEnv:
             
         self.parent_conns[0].send(('get_spaces', None))
         self.observation_space, self.action_space = self.parent_conns[0].recv()
-        print(f"VecEnv создана. observation_space: {self.observation_space}, action_space: {self.action_space}")
         
     def step(self, actions):
         for conn, action in zip(self.parent_conns, actions):

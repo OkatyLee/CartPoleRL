@@ -146,9 +146,7 @@ class PPO:
         obs, info = self.env.reset()
         obs = torch.tensor(obs, dtype=torch.float32)
         episode_rewards = np.zeros(self.n_envs)
-        episode_lengths = np.zeros(self.n_envs)
         reward_history = []
-        length_history = []
         num_updates = total_timesteps // (self.buffer.buffer_size * self.n_envs) + 1
         for update in range(num_updates):
             for step in range(self.buffer.buffer_size):
