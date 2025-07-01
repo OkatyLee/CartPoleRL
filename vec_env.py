@@ -91,10 +91,10 @@ class VecEnv:
         for conn in self.parent_conns:
             conn.send(('render', None))
             conn.recv()
-        
-def create_env(env_class, render):
-    return env_class(render)
 
-def make_vec_env(env_class, n_envs=1, render=False):
-    env_fns = [functools.partial(create_env, env_class, render) for _ in range(n_envs)]
+def create_env(env_class, **kwargs):
+    return env_class(**kwargs)
+
+def make_vec_env(env_class, n_envs=1, **kwargs):
+    env_fns = [functools.partial(create_env, env_class, **kwargs) for _ in range(n_envs)]
     return VecEnv(env_fns)

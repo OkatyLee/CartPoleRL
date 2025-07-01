@@ -5,22 +5,30 @@ import pybullet_data
 
 class CartPoleEnv(gym.Env):
     
-    def __init__(self, render=False):
+    def __init__(self, force_mag=100, render=False, action_space_type='discrete'):
+        self.action_space_type = action_space_type
+        if action_space_type not in ['discrete', 'continuous']:
+            raise ValueError("action_space_type must be either 'discrete' or 'continuous'")
         super(CartPoleEnv, self).__init__()
         self.render_mode = "human" if render else None
         self.state = None
+        self.force_mag = force_mag
+        
         low = np.array([-5, -np.inf, -30*np.pi/180, -np.inf], dtype=np.float32)
         high = -low
         self.observation_space = gym.spaces.Box(low, high, dtype=np.float32)
-        self.action_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(2) if action_space_type=='discrete' else gym.spaces.Box(low=-1., high=1., shape=(1,), dtype=np.float32)
         self.episode_reward = 0.0
+        self.episode_length = 0
 
     def reset(self):
         super().reset()
         self.state = np.random.uniform(low=-0.05, high=0.05, size=(4,)).astype(np.float32)
         episode_reward = self.episode_reward
+        episode_length = self.episode_length
         self.episode_reward = 0.0
-        return self.state, {"episode": {"r": episode_reward, "l": episode_reward}}
+        self.episode_length = 0
+        return self.state, {"episode": {"r": episode_reward, "l": episode_length}}
 
     def step(self, action):
         dt = 0.02
@@ -29,7 +37,10 @@ class CartPoleEnv(gym.Env):
         M = 1.0
         l = 0.5
         x, x_dot, theta, theta_dot = self.state
-        F = 100 if  action == 1 else -100
+        if self.action_space_type == 'discrete':
+            F = self.force_mag if action else -self.force_mag
+        else:
+            F = np.clip(action * self.force_mag, -self.force_mag, self.force_mag)
         sin_theta = np.sin(theta)
         cos_theta = np.cos(theta)
         temp = (F + m*l*sin_theta*np.square(theta_dot)) / (M + m)
@@ -40,8 +51,12 @@ class CartPoleEnv(gym.Env):
         theta = theta + theta_dot * dt
         theta_dot = theta_dot + theta_ddot * dt
         terminated = bool(x < -2.4 or x > 2.4 or theta < -12 * np.pi / 180 or theta > 12 * np.pi / 180)
-        reward = 1.0 if not terminated else 0.0
+        gamma, alpha, beta, lam = 0.99, 0.05, 0.1, 0.01
+        shaping_term = gamma * (-alpha * x_dot**2 - beta * theta_dot**2 - lam * action**2) + alpha * x**2 + beta * theta**2
+        reward = 1.0 + shaping_term if not terminated else shaping_term
+        #reward = 1 if not terminated else 0
         self.episode_reward += reward
+        self.episode_length += 1
         if self.render_mode == "human":
             self.render()
         self.state = np.array([x, x_dot, theta, theta_dot], dtype=np.float32)
@@ -55,19 +70,23 @@ class CartPoleEnv(gym.Env):
         pass
     
 class CartPoleBulletEnv(gym.Env):
-    def __init__(self, render=False):
+    def __init__(self, force_mag=100,  render=False, action_space_type='discrete'):
+        self.action_space_type = action_space_type
+        if action_space_type not in ['discrete', 'continuous']:
+            raise ValueError("action_space_type must be either 'discrete' or 'continuous'")
         super(CartPoleBulletEnv, self).__init__()
         self.render_mode = "human" if render else None
         self.client = p.connect(p.GUI if render else p.DIRECT)
         p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.client)
         p.setGravity(0, 0, -9.8, physicsClientId=self.client)
         p.setTimeStep(0.02, physicsClientId=self.client)
-        self.action_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(2) if action_space_type == 'discrete' else gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
         low = np.array([-5, -np.inf, -30*np.pi/180, -np.inf], dtype=np.float32)
         self.observation_space = gym.spaces.Box(low, -low, dtype=np.float32)
         self.episode_reward = 0.0
+        self.episode_length = 0
         self.g = -9.8
-        self.force_mag = 100
+        self.force_mag = force_mag
         self.time_step = 0.02
         self.cartpole = None
     
@@ -102,12 +121,16 @@ class CartPoleBulletEnv(gym.Env):
             physicsClientId=self.client
         )
         observation = self._get_observation()
-        info = {"episode": {"r": self.episode_reward, "l": self.episode_reward}}
+        info = {"episode": {"r": self.episode_reward, "l": self.episode_length}}
         self.episode_reward = 0.0
+        self.episode_length = 0
         return observation, info
     
     def step(self, action):
-        force = self.force_mag if action == 1 else -self.force_mag
+        if self.action_space_type == 'discrete':
+            force = self.force_mag if action == 1 else -self.force_mag
+        else:
+            force = action * self.force_mag
         p.setJointMotorControl2(self.cartpole, 0, p.TORQUE_CONTROL, force=force, physicsClientId=self.client)
         
         p.stepSimulation(physicsClientId=self.client)
@@ -115,9 +138,10 @@ class CartPoleBulletEnv(gym.Env):
         
         x, x_dot, theta, theta_dot = observation
         terminated = bool(x < -2.4 or x > 2.4 or theta < -12 * np.pi / 180 or theta > 12 * np.pi / 180)
-        reward = 1.0 if not terminated else 0.0
+        reward = 1.0 - theta**2 - 0.1 * x**2 - 0.1 * action**2 if not terminated else -10.0
+
         self.episode_reward += reward
-        
+        self.episode_length += 1
         
         return observation, reward, terminated, False, {}
 
